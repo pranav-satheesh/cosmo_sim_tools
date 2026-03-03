@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cosmo-sim-tools"
+version = "0.1.0"
+description = "Cosmological simulation utilities for group catalogs, merger trees, and analysis workflows"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Pranav Satheesh" }
+]
+dependencies = [
+  "numpy",
+  "scipy",
+  "h5py",
+  "matplotlib",
+  "six"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cosmo_sim_tools*"]

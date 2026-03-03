@@ -35,6 +35,13 @@ def getNumPart(header):
     return nPart
 
 
+def loadHeader(basePath, snapNum, chunkNum=0):
+    """ Load the header dictionary from a snapshot file. """
+    with h5py.File(snapPath(basePath, snapNum, chunkNum), 'r') as f:
+        header = dict(f['Header'].attrs.items())
+    return header
+
+
 def loadSubset(basePath, snapNum, partType, fields=None, subset=None, mdi=None, sq=True, float32=False):
     """ Load a subset of fields for all particles/cells of a given partType.
         If offset and length specified, load only that subset of the partType.

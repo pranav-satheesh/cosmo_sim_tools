@@ -1,0 +1,18 @@
+name: cosmo_sim_tools
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - scipy
+  - h5py
+  - matplotlib
+  - pandas
+  - six
+  - pip
+  - pip:
+      # kdcount is only on PyPI; used by spatial correlation / neighbor-finding
+      # routines in arepo_tools and brahma_bh_dynamics.
+      - kdcount
+      # editable install of this package (run `conda env create` from repo root)
+      - -e .

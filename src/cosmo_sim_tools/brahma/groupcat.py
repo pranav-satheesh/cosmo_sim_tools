@@ -11,6 +11,7 @@ import h5py
 
 def gcPath(basePath, snapNum, chunkNum=0):
     """ Return absolute path to a group catalog HDF5 file (modify as needed). """
+    basePath = basePath.rstrip('/')  # Remove trailing slash if present
     gcPath = basePath + '/groups_%03d/' % snapNum
     filePath1 = gcPath + 'groups_%03d.%d.hdf5' % (snapNum, chunkNum)
     filePath2 = gcPath + 'fof_subhalo_tab_%03d.%d.hdf5' % (snapNum, chunkNum)
@@ -64,6 +65,8 @@ def gcPath_postprocessed(basePath, snapNum, chunkNum=0):
 
 def offsetPath(basePath, snapNum):
     """ Return absolute path to a separate offset file (modify as needed). """
+    # Remove trailing slash if present, then go up one directory and into postprocessing
+    basePath = basePath.rstrip('/')
     offsetPath = basePath + '/../postprocessing/offsets/offsets_%03d.hdf5' % snapNum
 
     return offsetPath

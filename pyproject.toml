@@ -16,6 +16,7 @@ dependencies = [
   "scipy",
   "h5py",
   "matplotlib",
+  "pandas",
   "six"
 ]
 

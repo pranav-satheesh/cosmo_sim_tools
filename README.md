@@ -13,7 +13,25 @@ Consolidated toolkit for cosmological simulation analysis, namely Illustris,TNG 
 - `notebooks/` — analysis notebooks
 - `tests/` — tests
 
-## Editable install
+## Installation
+
+### With conda (recommended)
+
+Create the environment from the provided `environment.yml` (run from the repo
+root). This installs all dependencies and the package itself in editable mode:
+
+```bash
+conda env create -f environment.yml
+conda activate cosmo_sim_tools
+```
+
+To update the environment after `environment.yml` changes:
+
+```bash
+conda env update -f environment.yml --prune
+```
+
+### With pip
 
 ```bash
 pip install -e .

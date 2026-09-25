@@ -369,222 +369,59 @@ def getSnapOffsets_groupordered(basePath, snapNum, id, type_field):
         raise Exception(f"Could not find offsets for {type_field}:{id}")
 
 
-def loadSubset_groupordered(basePath, snapNum, id, partType, fields=None, subset=None, mdi=None, sq=True, float32=True):
-    ''' Load subset of [partType] particles in groups/subhalos.
-    Works with new file format (group-ordered snapshots). 
-    
-    Parameters
-    ----------
-    basePath : str
-        Simulation directory (containing snapdir_###/...) 
-    snapNum : int
-        Snapshot number
-    id : int
-        Group/Subhalo ID
-    partType : int
-        Particle type code (0-5): gas, dm, wind, stars, bh, etc.
-    fields : list
-        Fields to load (default: all)
-    subset : dict
-        Subset specification with keys like 'lenType' and 'offsetType'
-    mdi : list
-        Multi-dimensional index for fields
-    sq : bool
-        Single query flag
-    float32 : bool
-        Convert float64 to float32? Default True for memory saving.
-    
-    Returns
-    -------
-    dict or np.ndarray : Loaded particle data
-    ''' 
-    result = {}
+def loadSubhalo_groupordered(basePath, snapNum, id, partType, fields=None, subset=None, mdi=None, sq=True, float32=True):
+    """Load a subhalo from group-ordered snapshots using explicit particle offsets.
 
-    # Default group name for particle type
-    gName = "PartType" + str(partType)
-
-    # Determine file counts
-    with h5py.File(snapPath(basePath, snapNum, 0), 'r') as f:
-        nPartType = f['Header'].attrs['NumPart_ThisFile']
-        nPart = f['Header'].attrs['NumPart_Total']
-
-    # If loading via group-ordered subsets, get offset info from group catalog
+    subset must contain lenType and offsetType arrays of length six and a
+    snapOffsets array of shape (6, number_of_chunks), all for the ordered files.
+    The caller must supply offsets for id; this function does not infer them.
+    Missing offsets raise ValueError rather than returning the whole snapshot.
+    """
     if subset is None:
-        # Use group catalog to get subset info
-        try:
-            with h5py.File(gcPath(basePath, snapNum), 'r') as f:
-                # Get number of files
-                header = dict(f['Header'].attrs.items())
-                numFiles = int(header['NumFiles'])
-                
-                # Compute offsets from scratch using getSnapOffsets
-                offsetsThisType = getSnapOffsets(basePath, snapNum, id, 'Group' if 'Groups' in f else 'Subhalo')
-                fileNum = offsetsThisType[1]
-                fileOff = offsetsThisType[0]
-                
-                # Get the length of particles of this type
-                if 'GroupLen' in f and str(id) in f['GroupLen']:
-                    lentype = np.array(f['GroupLen'][str(id)])
-                    numToRead = lentype[partType] if partType < len(lentype) else 0
-                else:
-                    numToRead = nPart[partType]
-        except:
-            # Fall back to simple case
-            fileNum = 0
-            fileOff = 0
-            numToRead = nPart[partType]
-    else:
-        fileNum = subset['offsetType'][1]
-        fileOff = subset['offsetType'][0]
-        numToRead = subset['lenType'][partType]
+        raise ValueError(
+            "Group-ordered subhalo loading requires explicit subset offsets for "
+            f"subhalo {id}: lenType, offsetType, and snapOffsets."
+        )
+    required = {'lenType', 'offsetType', 'snapOffsets'}
+    if not isinstance(subset, dict) or not required.issubset(subset):
+        raise ValueError("subset must contain lenType, offsetType, and snapOffsets")
+    subset = {key: np.asarray(subset[key]) for key in required}
+    if (subset['lenType'].shape != (6,) or subset['offsetType'].shape != (6,)
+            or subset['snapOffsets'].ndim != 2
+            or subset['snapOffsets'].shape[0] != 6
+            or subset['snapOffsets'].shape[1] == 0):
+        raise ValueError("Expected length-six lenType/offsetType and (6, N) snapOffsets")
+    if any(not np.issubdtype(value.dtype, np.integer) or np.any(value < 0)
+           for value in subset.values()):
+        raise ValueError("Subset lengths and offsets must be nonnegative integers")
+    if (np.any(subset['snapOffsets'][:, 0] != 0)
+            or np.any(np.diff(subset['snapOffsets'], axis=1) < 0)):
+        raise ValueError("snapOffsets must start at zero and increase monotonically")
+    return loadSubset_groupordered(
+        basePath, snapNum, partType, fields=fields, subset=subset,
+        mdi=mdi, sq=sq, float32=float32,
+    )
 
-    result['count'] = numToRead
 
-    if not numToRead:
-        return result
+def getSnapOffsets(basePath, snapNum, id, type):
+    """Read the catalog offsets needed by ordinary snapshot halo loaders.
 
-    # find a chunk with this particle type
-    with h5py.File(snapPath(basePath, snapNum, 0), 'r') as f:
-        i = 0
-        while gName not in f:
-            f = h5py.File(snapPath(basePath, snapNum, i), 'r')
-            i += 1
-
-        # if fields not specified, load everything
-        if not fields:
-            fields = list(f[gName].keys())
-
-        for i, field in enumerate(fields):
-            # verify existence
-            if field not in f[gName].keys():
-                raise Exception("Particle type ["+str(partType)+"] does not have field ["+field+"]")
-
-            # replace local length with global
-            shape = list(f[gName][field].shape)
-            shape[0] = numToRead
-
-            # multi-dimensional index slice load
-            if mdi is not None and mdi[i] is not None:
-                if len(shape) != 2:
-                    raise Exception("Read error: mdi requested on non-2D field ["+field+"]")
-                shape = [shape[0]]
-
-            # allocate within return dict
-            dtype = f[gName][field].dtype
-            if dtype == np.float64 and float32: dtype = np.float32
-            result[field] = np.zeros(shape, dtype=dtype)
-
-        f.close()
-
-    # loop over chunks
-    wOffset = 0
-    origNumToRead = numToRead
-    
-    # Get total number of files
-    with h5py.File(gcPath(basePath, snapNum), 'r') as f:
-        header = dict(f['Header'].attrs.items())
-        numFiles = int(header['NumFiles'])
-
-    while numToRead:
-        try:
-            f = h5py.File(snapPath(basePath, snapNum, fileNum), 'r')
-        except FileNotFoundError:
-            # Reached the end of available files; remaining particles may not exist
-            if numToRead > 0:
-                print(f"Warning: Could not read all {origNumToRead} particles. Only read {wOffset}.")
-                break
-            break
-
-        # no particles of requested type in this file chunk?
-        if gName not in f:
-            f.close()
-            fileNum += 1
-            fileOff  = 0
-            continue
-
-        # set local read length for this file chunk, truncate to be within the local size
-        numTypeLocal = f['Header'].attrs['NumPart_ThisFile'][partType]
-
-        # Safety check: ensure fileOff is valid
-        if fileOff < 0 or fileOff >= numTypeLocal:
-            print(f"Warning: Invalid file offset {fileOff} for file {fileNum} with {numTypeLocal} particles of type {partType}. Skipping.")
-            f.close()
-            fileNum += 1
-            fileOff = 0
-            continue
-
-        numToReadLocal = numToRead
-
-        if fileOff + numToReadLocal > numTypeLocal:
-            numToReadLocal = numTypeLocal - fileOff
-
-        if numToReadLocal < 0:
-            print(f"Warning: Negative read length {numToReadLocal}. Skipping and continuing to next file.")
-            f.close()
-            fileNum += 1
-            fileOff = 0
-            continue
-    
-    offset_counter = 0
-    snap_counters = np.zeros(6, dtype=np.int64)
-    
-    for fileNum in range(numFiles):
-        with h5py.File(gcPath(basePath, snapNum, fileNum), 'r') as f:
-            header_this = dict(f['Header'].attrs.items())
-            
-            # Count groups/subhalos in this file
-            if type == "Group":
-                count_this = int(header_this.get('Ngroups_ThisFile', 0))
-            else:  # Subhalo
-                count_this = int(header_this.get('Nsubgroups_ThisFile', 0))
-            
-            fileOffsets[fileNum] = offset_counter
-            snapOffsets[:, fileNum] = snap_counters.copy()
-            
-            # Update counters
-            offset_counter += count_this
-            
-            # Update particle type counters from NumPart_ThisFile
-            if 'NumPart_ThisFile' in header_this:
-                snap_counters += np.array(header_this['NumPart_ThisFile'][:6], dtype=np.int64)
-    
-    groupFileOffsets = fileOffsets.copy()
-    r['snapOffsets'] = snapOffsets
-
-    # Calculate target groups file chunk which contains this id
-    groupFileOffsets = int(id) - groupFileOffsets
-    fileNum_array = np.where(groupFileOffsets >= 0)[0]
-    
-    if len(fileNum_array) == 0:
-        raise ValueError(f"ID {id} not found in any file offset")
-    
-    fileNum = int(np.max(fileNum_array))
-    fileNum = min(fileNum, numFiles - 1)  # Ensure fileNum doesn't exceed numFiles-1
-    groupOffset = int(groupFileOffsets[fileNum])
-
-    # Load the length (by type) of this group/subgroup from the group catalog
-    with h5py.File(gcPath(basePath, snapNum, fileNum), 'r') as f:
-        r['lenType'] = f[type][type+'LenType'][groupOffset, :]
-
-    # Calculate the offset (by type) of this group/subgroup within the snapshot
-    offsetType = np.zeros(6, dtype=np.int64)
-    
-    # Add offsets from all previous files
-    for fn in range(fileNum):
-        with h5py.File(gcPath(basePath, snapNum, fn), 'r') as f:
-            header_fn = dict(f['Header'].attrs.items())
-            if 'NumPart_ThisFile' in header_fn:
-                offsetType += np.array(header_fn['NumPart_ThisFile'][:6], dtype=np.int64)
-    
-    # Add offset within current file for this group/subhalo
-    with h5py.File(gcPath(basePath, snapNum, fileNum), 'r') as f:
-        lentype_all = f[type][type+'LenType'][:]
-        for prev_id in range(groupOffset):
-            offsetType += lentype_all[prev_id, :]
-    
-    r['offsetType'] = offsetType
-
-    return r
+    Return lenType, offsetType, and snapOffsets using the existing legacy/public
+    offset layouts. Missing metadata raises an error; offsets are never guessed
+    from cumulative subhalo lengths, which omit unbound particles.
+    """
+    if type not in ('Group', 'Subhalo'):
+        raise ValueError("type must be 'Group' or 'Subhalo'")
+    if not isinstance(id, (int, np.integer)) or id < 0:
+        raise ValueError("id must be a nonnegative integer")
+    try:
+        return getSnapOffsets_old(basePath, snapNum, id, type)
+    except (KeyError, OSError) as exc:
+        raise ValueError(
+            f"Cannot load {type} {id} at snapshot {snapNum}: required catalog "
+            "offset metadata is missing or unreadable. Supply the matching "
+            "offset files; group-ordered offsets use a different layout."
+        ) from exc
 
 
 def getSnapOffsets_old(basePath, snapNum, id, type):
@@ -624,8 +461,11 @@ def getSnapOffsets_old(basePath, snapNum, id, type):
 
 
 def loadSubhalo(basePath, snapNum, id, partType, fields=None):
-    """ Load all particles/cells of one type for a specific subhalo
-        (optionally restricted to a subset fields). """
+    """Load selected particle fields for one subhalo from ordinary snapshots.
+
+    Resolve catalog offsets with getSnapOffsets and return loadSubset output.
+    Missing offset metadata raises an error instead of reading unrelated particles.
+    """
     # load subhalo length, compute offset, call loadSubset
     subset = getSnapOffsets(basePath, snapNum, id, "Subhalo")
     return loadSubset(basePath, snapNum, partType, fields, subset=subset)
@@ -640,8 +480,11 @@ def loadSubhalo_old(basePath, snapNum, id, partType, fields=None):
 
 
 def loadHalo(basePath, snapNum, id, partType, fields=None):
-    """ Load all particles/cells of one type for a specific halo
-        (optionally restricted to a subset fields). """
+    """Load selected particle fields for one FoF halo from ordinary snapshots.
+
+    Resolve catalog offsets with getSnapOffsets and return loadSubset output.
+    Missing offset metadata raises an error instead of reading unrelated particles.
+    """
     # load halo length, compute offset, call loadSubset
     subset = getSnapOffsets(basePath, snapNum, id, "Group")
     return loadSubset(basePath, snapNum, partType, fields, subset=subset)

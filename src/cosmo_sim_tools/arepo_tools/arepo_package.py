@@ -9,7 +9,7 @@ import sys
 import matplotlib.cm as cm  
 import numpy
 
-from cosmo_sim_tools import illustris as il
+from cosmo_sim_tools import brahma
 import os
 #from kdcount import correlate
 import scipy
@@ -19,6 +19,10 @@ import h5py
 
 
 def get_redshift_from_snapshot(output_path,snap):
+    """Find the redshift of the available snapshot nearest to snap.
+
+    Return one redshift using the catalog snapshot correspondence.
+    """
     snapshot_space,redshift_space=get_snapshot_redshift_correspondence(output_path)
     diff = abs(snapshot_space-snap)
     return (redshift_space[diff==min(diff)])[0]
@@ -26,6 +30,10 @@ def get_redshift_from_snapshot(output_path,snap):
     
 
 def get_snapshot_redshift_correspondence(output_path,file_format='fof_subfind'):
+    """Read snapshot numbers and redshifts from group catalogs.
+
+    Return arrays ordered by snapshot number; file_format selects the catalog layout.
+    """
     output_file_names=os.listdir(output_path)
 #    print(output_foutput_test_0.32_1.83_new_no_ex_new9_bFOF3_env_seed5.00le_names)
 #    print(output_path)
@@ -42,7 +50,7 @@ def get_snapshot_redshift_correspondence(output_path,file_format='fof_subfind'):
     snapshot_space=numpy.sort(numpy.array(snapshot_space))
     for snapshot_number in snapshot_space:
             if (file_format=='fof_subfind') | (file_format=='fof_sub_subfind'):
-                header=il.groupcat.loadHeader(output_path,snapshot_number)
+                header=brahma.groupcat.loadHeader(output_path,snapshot_number)
             elif (file_format=='fof'):
                 if (snapshot_number >= 100):
                     groups_folder = output_path+'/groups_%d/'%snapshot_number
@@ -74,6 +82,10 @@ def get_snapshot_redshift_correspondence(output_path,file_format='fof_subfind'):
     return numpy.array(snapshot_space),numpy.array(redshift_space)
 
 def periodic_distance(basePath,position1,position2):
+    """Measure the minimum-image distance between two positions.
+
+    Read the periodic box size from basePath; use the same units as the coordinates.
+    """
     boxsize=get_box_size(basePath)
     diff1=numpy.abs(position1-position2)
     diff2=numpy.abs(position1-position2+boxsize)
@@ -81,6 +93,10 @@ def periodic_distance(basePath,position1,position2):
     distance_vec=numpy.amin(numpy.array([diff1,diff2,diff3]),axis=0)
     return numpy.sqrt(numpy.sum(distance_vec*distance_vec))
 def get_bootstrap_error(sample,N_bootstrap,MODE,GET_CENTRAL=0):
+    """Estimate the scatter of a sample mean or median by resampling.
+
+    MODE selects the statistic; GET_CENTRAL also returns its average over resamples.
+    """
     data=[]
     for i in range(0,N_bootstrap):        
         resample=numpy.random.choice(sample,size=sample.shape, replace=True)
@@ -95,6 +111,10 @@ def get_bootstrap_error(sample,N_bootstrap,MODE,GET_CENTRAL=0):
 
 
 def make_median_with_bootstrap(x_values,y_values,x_min,x_max,nbins,N_bootstrap):
+    """Estimate medians and bootstrap errors in evenly spaced x windows.
+
+    Return centers, spacing, bootstrap-averaged medians, errors, and interquartile ranges.
+    """
     x_space=numpy.linspace(x_min,x_max,nbins)
     diff=numpy.diff(x_space)[0]
     median_space=[]
@@ -111,7 +131,11 @@ def make_median_with_bootstrap(x_values,y_values,x_min,x_max,nbins,N_bootstrap):
     IQR_space=numpy.array(IQR_space)
     return x_space,diff,median_space,err_space,IQR_space
 
-def make_median_with_bootstrap(x_values,y_values,x_min,x_max,nbins,N_bootstrap):
+def make_mean_with_bootstrap(x_values,y_values,x_min,x_max,nbins,N_bootstrap):
+    """Estimate means and bootstrap errors in evenly spaced x windows.
+
+    Return centers, spacing, bootstrap-averaged means, errors, and interquartile ranges.
+    """
     x_space=numpy.linspace(x_min,x_max,nbins)
     diff=numpy.diff(x_space)[0]
     median_space=[]
@@ -131,6 +155,10 @@ def make_median_with_bootstrap(x_values,y_values,x_min,x_max,nbins,N_bootstrap):
 
 
 def get_box_size(output_path):
+    """Read BoxSize from the first readable group catalog.
+
+    Return the box length in simulation units, or None if no catalog can be read.
+    """
     output_file_names=os.listdir(output_path)
     snapshot_space=[]
     redshift_space=[]
@@ -138,7 +166,7 @@ def get_box_size(output_path):
         try:
             if ('groups' in name):
                 snapshot_number=int(name[7:])
-                header=il.groupcat.loadHeader(output_path,snapshot_number)
+                header=brahma.groupcat.loadHeader(output_path,snapshot_number)
                 box_size=header.get('BoxSize')   
                 return box_size
         except:
@@ -146,13 +174,17 @@ def get_box_size(output_path):
              
         
 def get_cosmology(output_path):
+    """Read cosmological parameters from a group catalog header.
+
+    Return Omega0, OmegaLambda, and HubbleParam from the first matching catalog.
+    """
     output_file_names=os.listdir(output_path)
     snapshot_space=[]
     redshift_space=[]
     for name in output_file_names:
         if ('groups' in name) & ('groups_sub' not in name):
             snapshot_number=int(name[7:])
-            header=il.groupcat.loadHeader(output_path,snapshot_number)
+            header=brahma.groupcat.loadHeader(output_path,snapshot_number)
             om0=header.get('Omega0')
             oml=header.get('OmegaLambda')
             h=header.get('HubbleParam')            
@@ -160,13 +192,21 @@ def get_cosmology(output_path):
         
         
 def load_snapshot_header(output_path,desired_redshift):
+    """Read and print the snapshot header nearest to desired_redshift.
+
+    Return its HDF5 attributes as a dictionary using the Brahma snapshot path.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift)
-    with h5py.File(il.snapshot.snapPath(output_path, output_snapshot)) as f:
+    with h5py.File(brahma.snapshot.snapPath(output_path, output_snapshot)) as f:
         header = dict(f['Header'].attrs.items())
         print(header)
         return header
 
 def desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=True,file_format='fof_subfind'): 
+    """Select the available snapshot closest to a requested redshift.
+
+    Return the actual redshift and snapshot number; list_all prints the selection.
+    """
     snapshot_space,redshift_space=get_snapshot_redshift_correspondence(output_path,file_format=file_format)
     redshift_difference=numpy.abs(redshift_space-desired_redshift)
     min_redshift_difference=numpy.amin(redshift_difference)
@@ -179,23 +219,31 @@ def desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=Tr
     return output_redshift,output_snapshot      
         
 def make_cuts(quantities,cut): #selects an array of quantities (argument 1) and makes cuts (argument 2)
+    """Apply the same index or boolean selection to multiple arrays.
+
+    Return a list of selected arrays in the input order.
+    """
     cutted_quantities=[quantity[cut] for quantity in quantities]
     return cutted_quantities
 
 def get_group_property(output_path,group_property,desired_redshift,list_all=True,file_format='fof_subfind',stack_style='hstack',postprocessed = 0):
+    """Load FoF halo fields at the nearest available redshift.
+
+    file_format and postprocessed select the Brahma catalog reader; return fields and redshift.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False,file_format=file_format)
     if (file_format=='fof_subfind'):
         if(postprocessed == 1):
-            property = il.groupcat.loadHalos_postprocessed(output_path,output_snapshot,fields=group_property)
+            property = brahma.groupcat.loadHalos_postprocessed(output_path,output_snapshot,fields=group_property)
         else:
-            property = il.groupcat.loadHalos(output_path,output_snapshot,fields=group_property)
+            property = brahma.groupcat.loadHalos(output_path,output_snapshot,fields=group_property)
             
     elif (file_format=='fof_sub_subfind'):
-        property = il.groupcat.loadHalos2(output_path,output_snapshot,fields=group_property)
+        property = brahma.groupcat.loadHalos2(output_path,output_snapshot,fields=group_property)
     elif (file_format=='fof'):
-        property = il.groupcat.loadHalos3(output_path,output_snapshot,fields=group_property)
+        property = brahma.groupcat.loadHalos3(output_path,output_snapshot,fields=group_property)
     elif (file_format=='fof_sub'):
-        property = il.groupcat.loadHalos4(output_path,output_snapshot,fields=group_property)
+        property = brahma.groupcat.loadHalos4(output_path,output_snapshot,fields=group_property)
     else:
         print("Error: Unrecognized file format")
     return property,output_redshift
@@ -255,14 +303,18 @@ def get_group_property(output_path,group_property,desired_redshift,list_all=True
 
 
 def get_subhalo_property(output_path,subhalo_property,desired_redshift,list_all=True,file_format='fof_subfind',postprocessed=0):
+    """Load subhalo fields at the nearest available redshift.
+
+    Select standard, alternate, or postprocessed catalogs; return fields and redshift.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False)  
     if (file_format=='fof_subfind'):
         if(postprocessed==1):
-            property = il.groupcat.loadSubhalos_postprocessed(output_path,output_snapshot,fields=subhalo_property)
+            property = brahma.groupcat.loadSubhalos_postprocessed(output_path,output_snapshot,fields=subhalo_property)
         else:
-            property = il.groupcat.loadSubhalos(output_path,output_snapshot,fields=subhalo_property)
+            property = brahma.groupcat.loadSubhalos(output_path,output_snapshot,fields=subhalo_property)
     elif(file_format=='fof_sub_subfind'):
-        property = il.groupcat.loadSubhalos2(output_path,output_snapshot,fields=subhalo_property)
+        property = brahma.groupcat.loadSubhalos2(output_path,output_snapshot,fields=subhalo_property)
         
         #    if (list_all):
 #        print('Below are the list of properties')
@@ -270,11 +322,15 @@ def get_subhalo_property(output_path,subhalo_property,desired_redshift,list_all=
     return property,output_redshift
 
 def get_particle_property(output_path,particle_property,p_type,desired_redshift,list_all=True,file_format='fof_subfind'):
+    """Load a snapshot field for the requested particle type.
+
+    Return particle data and the actual redshift nearest to desired_redshift.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,file_format=file_format)
 #    if (list_all):
 #        print('Below are the list of properties for ptype ',p_type)
-#        print(il.snapshot.loadSubset(output_path,output_snapshot,p_type).keys())
-    return il.snapshot.loadSubset(output_path,output_snapshot,p_type,fields=particle_property),output_redshift
+#        print(brahma.snapshot.loadSubset(output_path,output_snapshot,p_type).keys())
+    return brahma.snapshot.loadSubset(output_path,output_snapshot,p_type,fields=particle_property),output_redshift
 
 
 #def get_effective_zoom_volume(basePath,desired_redshift,levelmax):
@@ -287,6 +343,10 @@ def get_particle_property(output_path,particle_property,p_type,desired_redshift,
 #    return effective_volume,simulation_volume
 
 def get_effective_zoom_volume(basePath,desired_redshift,HighResGasFractionCut):
+    """Estimate gas volumes from particle mass divided by density.
+
+    Return high-resolution gas, total gas, box volumes, and redshift; lengths are converted by 1000.
+    """
     mpc_to_kpc=1000.
 #    DM_particle_mass=load_snapshot_header(basePath,desired_redshift)['MassTable'][1]
     ptype=0   
@@ -310,7 +370,15 @@ def get_effective_zoom_volume(basePath,desired_redshift,HighResGasFractionCut):
     #return 1,1
     
 def mass_counts(HM,Nbins,log_HM_min,log_HM_max,linear=0):
+    """Bin masses and estimate counts per unit mass with Poisson errors.
+
+    Return arithmetic bin centers, differential counts, and errors; linear selects the edges.
+    """
     def extract(HM_min,HM_max):
+        """Summarize values strictly inside the supplied bin edges.
+
+        Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+        """
         mask=(HM>HM_min)&(HM<HM_max)
         return (HM_min+HM_max)/2,len(HM[mask])
     if (linear):
@@ -329,6 +397,10 @@ def mass_counts(HM,Nbins,log_HM_min,log_HM_max,linear=0):
 
 def get_mass_function_for_zoom(basePath,levelmax,desired_redshift,particle_property,logmassmin,logmassmax,nbins,HighResGasFractionCut=0.1,zoom_volume=1):
     
+    """Compute a black-hole mass function normalized by the selected volume.
+
+    Scale snapshot masses by 1e10; return mass centers, densities, and Poisson errors.
+    """
     if zoom_volume:
         effective_volume,total_gas_volume,simulation_volume,output_redshift=get_effective_zoom_volume(basePath,desired_redshift,HighResGasFractionCut)
     else:
@@ -349,7 +421,15 @@ def get_mass_function_for_zoom(basePath,levelmax,desired_redshift,particle_prope
 
 
 def luminosity_counts(HM,Nbins,log_HM_min,log_HM_max):
+        """Count luminosities in logarithmic bins and normalize per dex.
+
+        Return arithmetic bin centers, counts per dex, and Poisson errors per dex.
+        """
         def extract(HM_min,HM_max):
+            """Summarize values strictly inside the supplied bin edges.
+
+            Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+            """
             mask=(HM>HM_min)&(HM<HM_max)
             #print len(HM[mask])
             return (HM_min+HM_max)/2,len(HM[mask])
@@ -365,6 +445,10 @@ def luminosity_counts(HM,Nbins,log_HM_min,log_HM_max):
         return centers,HMF,dHMF
 
 def get_luminosity_function_for_zoom(basePath,levelmax,desired_redshift,Luminosities,logmassmin,logmassmax,nbins,HighResGasFractionCut=0.1,zoom_volume=1):
+    """Normalize a supplied luminosity distribution by zoom or box volume.
+
+    Return luminosity centers, number densities per dex, and their Poisson errors.
+    """
     if (zoom_volume):
         effective_volume,total_gas_volume,simulation_volume,output_redshift=get_effective_zoom_volume(basePath,desired_redshift,HighResGasFractionCut)
     else:
@@ -376,10 +460,18 @@ def get_luminosity_function_for_zoom(basePath,levelmax,desired_redshift,Luminosi
 
 
 def mass_function(HM,box_size,Nbins,log_HM_min,log_HM_max):
+    """Estimate a differential mass function in a periodic box.
+
+    Convert box_size by 1000; return centers, counts per mass per volume, and Poisson errors.
+    """
     box_size_Mpc=box_size/1000.
     #print(HM)
     
     def extract(HM_min,HM_max):
+        """Summarize values strictly inside the supplied bin edges.
+
+        Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+        """
         mask=(HM>HM_min)&(HM<HM_max)
         return (HM_min+HM_max)/2,len(HM[mask])
 
@@ -396,6 +488,10 @@ def mass_function(HM,box_size,Nbins,log_HM_min,log_HM_max):
 def get_distribution(quantity,Nbins,minimum,maximum,boxsize,min_count):  
     #sdsd
     
+    """Histogram positions and estimate low-count boundaries around the mode.
+
+    May unwrap quantity in place; return centers, counts, and the left and right boundaries.
+    """
     mask=(quantity<1000)
     
     mask2=(quantity>(boxsize-1000))
@@ -406,6 +502,10 @@ def get_distribution(quantity,Nbins,minimum,maximum,boxsize,min_count):
     else:
         print('No Reflection performed')
     def extract(mn,mx):
+        """Summarize values strictly inside the supplied bin edges.
+
+        Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+        """
         mask=(quantity>mn)&(quantity<mx)
         return (mn+mx)/2,len(quantity[mask])
     bin_edges=numpy.linspace(minimum,maximum,Nbins,endpoint=True)
@@ -428,7 +528,15 @@ def get_distribution(quantity,Nbins,minimum,maximum,boxsize,min_count):
 def get_probability_density(HM,Nbins,log_HM_min,log_HM_max,linear=0):
     #print(HM)
     
+    """Normalize bin counts over the supplied mass or quantity range.
+
+    Return centers, probabilities, errors, normalization width, and total count; linear uses densities.
+    """
     def extract(HM_min,HM_max):
+        """Summarize values strictly inside the supplied bin edges.
+
+        Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+        """
         mask=(HM>HM_min)&(HM<HM_max)
         return (HM_min+HM_max)/2,len(HM[mask])
     if (linear):
@@ -452,7 +560,15 @@ def get_probability_density(HM,Nbins,log_HM_min,log_HM_max,linear=0):
 def get_probability_density_weighed(HM,weigh,Nbins,log_HM_min,log_HM_max,linear=0):
     #print(HM)
     
+    """Normalize weighted bin counts over the requested range.
+
+    Return centers, normalized weights, square-root-weight errors, width, and total weight.
+    """
     def extract(HM_min,HM_max):
+        """Summarize values strictly inside the supplied bin edges.
+
+        Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+        """
         mask=(HM>HM_min)&(HM<HM_max)
         return (HM_min+HM_max)/2,sum(weigh[mask])
     if (linear):
@@ -477,10 +593,18 @@ def get_probability_density_weighed(HM,weigh,Nbins,log_HM_min,log_HM_max,linear=
 
 
 def BH_mass_function_AGN_fraction(bhmass,bolometric_luminosity,box_size,Nbins,log_HM_min,log_HM_max,log_lbol_cut):
+    """Estimate a black-hole mass function and luminosity-selected AGN fraction.
+
+    Return centers, mass-function values and errors, followed by AGN fractions and errors.
+    """
     box_size_Mpc=box_size/1000.
     #print(HM)
     HM=bhmass
     def extract(HM_min,HM_max):
+        """Summarize values strictly inside the supplied bin edges.
+
+        Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+        """
         mask=(HM>HM_min)&(HM<HM_max)
         mask2=mask&(bolometric_luminosity>10**log_lbol_cut)
         return (HM_min+HM_max)/2,len(HM[mask]),float(len(HM[mask2]))/(len(HM[mask])+0.00000001),numpy.sqrt(float(len(HM[mask2])))/(len(HM[mask])+0.00000001)
@@ -501,6 +625,10 @@ def BH_mass_function_AGN_fraction(bhmass,bolometric_luminosity,box_size,Nbins,lo
 
 
 def get_mass_function(category,object_type,desired_redshift,output_path,Nbins,log_mass_min,log_mass_max,list_all=True,dynamical_bh_mass=True):
+    """Load group or subhalo masses and calculate their mass function.
+
+    category selects total or component mass; return centers, densities, errors, and redshift.
+    """
     box_size=get_box_size(output_path)
       #print (box_)
     if (object_type=='group'):
@@ -533,6 +661,10 @@ def get_mass_function(category,object_type,desired_redshift,output_path,Nbins,lo
             return centers,HMF,dHMF,output_redshift        
 
 def get_particle_history(z_latest,z_earliest,z_no_of_bins,p_type,p_id_to_be_tracked,desired_property,output_path):
+    """Track one particle ID through snapshots near a redshift grid.
+
+    Return property and redshift arrays, skipping failed reads or non-unique ID matches.
+    """
     z_space=numpy.linspace(z_latest,z_earliest,z_no_of_bins)
     prperty_history=[]
     z_history=[]
@@ -550,11 +682,19 @@ def get_particle_history(z_latest,z_earliest,z_no_of_bins,p_type,p_id_to_be_trac
     return numpy.array(prperty_history),numpy.array(z_history)
 
 def poiss(rmin,rmax,BOXSIZE):
+    """Compute a spherical-shell volume divided by the simulation volume.
+
+    rmin and rmax are in box-length units divided by 1000; BOXSIZE is the original box length.
+    """
     p=4./3*scipy.pi*(rmax**3-rmin**3)/(BOXSIZE/1e3)**3
     return p 
 
     
 def correlate_info(data, NBINS, RMIN, RMAX, BOXSIZE, WRAP):
+    """Count particle pairs in logarithmic radial bins using kdcount.
+
+    Return radii, data-pair counts, and uniform random expectations; WRAP enables periodicity.
+    """
     from kdcount import correlate
     if data is not None:
         if RMAX is None:
@@ -588,6 +728,10 @@ def correlate_info(data, NBINS, RMIN, RMAX, BOXSIZE, WRAP):
     
     
 def cross_correlate_info(data1,data2, NBINS, RMIN, RMAX, BOXSIZE, WRAP):
+    """Count cross-pairs between two coordinate samples using kdcount.
+
+    Return radii, cross-pair counts, and uniform random expectations for the supplied box.
+    """
     from kdcount import correlate
     if data1 is not None:
         if RMAX is None:
@@ -621,6 +765,10 @@ def cross_correlate_info(data1,data2, NBINS, RMIN, RMAX, BOXSIZE, WRAP):
     
 def get_dark_matter_correlation_function(output_path,input_redshift,NBINS, RMIN, RMAX, WRAP,subsample_factor):
 
+    """Estimate the dark-matter autocorrelation from a subsampled snapshot.
+
+    Return radii, DD, RR, correlation, Poisson errors, and the selected redshift.
+    """
     BOXSIZE=get_box_size(output_path)
     print("boxsize:",BOXSIZE)
     positions,output_redshift=get_particle_property(output_path,'Coordinates',1,input_redshift)
@@ -631,6 +779,10 @@ def get_dark_matter_correlation_function(output_path,input_redshift,NBINS, RMIN,
     return r,DD,RR,xi,dxi,output_redshift
 
 def get_dark_matter_correlation_function_zoom(output_path,input_redshift,NBINS, RMIN, RMAX, WRAP,subsample_factor):
+    """Combine high- and low-resolution dark-matter pair counts by mass.
+
+    Return radii, weighted DD and RR, correlation, estimated errors, and redshift.
+    """
     from kdcount import correlate
 
     BOXSIZE=get_box_size(output_path)
@@ -676,6 +828,10 @@ def get_dark_matter_correlation_function_zoom(output_path,input_redshift,NBINS, 
 
 
 def get_group_lengths_offsets(output_path,p_type,desired_redshift,maximum_index,file_format='fof_subfind',postprocessed=0):
+    """Compute cumulative particle offsets from FoF GroupLenType.
+
+    Return lengths through maximum_index, their starting offsets, and the selected redshift.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False)
     group_lengths,output_redshift=(get_group_property(output_path,'GroupLenType', desired_redshift,file_format = file_format,list_all=False,postprocessed=postprocessed))
     group_lengths=group_lengths[:,p_type] 
@@ -684,9 +840,13 @@ def get_group_lengths_offsets(output_path,p_type,desired_redshift,maximum_index,
 
 
 def get_particle_property_within_postprocessed_groups(output_path,particle_property,p_type,desired_redshift,subhalo_index,group_type='groups',list_all=True,store_all_offsets=1, public_simulation=0,file_format='fof_subfind'):
+    """Select particle fields using postprocessed group catalogs and ordered snapshots.
+
+    Return particles and redshift for groups; subhalo mode also returns parent-group particles.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False,file_format=file_format)
     if (public_simulation==0):
-        requested_property=il.snapshot.loadSubset_groupordered(output_path,output_snapshot,p_type,fields=particle_property)
+        requested_property=brahma.snapshot.loadSubset_groupordered(output_path,output_snapshot,p_type,fields=particle_property)
 
     if (group_type=='groups'):
         if(public_simulation==0):              
@@ -704,7 +864,7 @@ def get_particle_property_within_postprocessed_groups(output_path,particle_prope
                     print("Storing the offsets")
             group_particles=requested_property[group_offsets[subhalo_index]:group_offsets[subhalo_index]+group_lengths[subhalo_index]]
         else:
-            group_particles=il.snapshot.loadHalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
+            group_particles=brahma.snapshot.loadHalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
         return group_particles,output_redshift
 
     elif (group_type=='subhalo'):              
@@ -745,17 +905,21 @@ def get_particle_property_within_postprocessed_groups(output_path,particle_prope
         else:
             subhalo_group_number,output_redshift=(get_subhalo_property(output_path,'SubhaloGrNr', desired_redshift,list_all=False,postprocessed=1));
             desired_group_number=subhalo_group_number[subhalo_index]
-            group_particles=il.snapshot.loadHalo(output_path, output_snapshot, desired_group_number, p_type, fields=particle_property)
-            subhalo_particles=il.snapshot.loadSubhalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
+            group_particles=brahma.snapshot.loadHalo(output_path, output_snapshot, desired_group_number, p_type, fields=particle_property)
+            subhalo_particles=brahma.snapshot.loadSubhalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
         return subhalo_particles,group_particles,output_redshift
     else:
         print("Error:Unidentified group type")
 
 
 def get_particle_property_within_groups(output_path,particle_property,p_type,desired_redshift,subhalo_index,group_type='groups',list_all=True,store_all_offsets=1, public_simulation=0,file_format='fof_subfind'):
+    """Select particle fields belonging to a FoF group or subhalo.
+
+    Return particles and redshift; subhalo mode also returns parent-group particles. Offsets may be cached.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False,file_format=file_format)
     if (public_simulation==0):
-        requested_property=il.snapshot.loadSubset(output_path,output_snapshot,p_type,fields=particle_property)
+        requested_property=brahma.snapshot.loadSubset(output_path,output_snapshot,p_type,fields=particle_property)
 
     if (group_type=='groups'):
         if(public_simulation==0):              
@@ -773,7 +937,7 @@ def get_particle_property_within_groups(output_path,particle_property,p_type,des
                     print("Storing the offsets")
             group_particles=requested_property[group_offsets[subhalo_index]:group_offsets[subhalo_index]+group_lengths[subhalo_index]]
         else:
-            group_particles=il.snapshot.loadHalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
+            group_particles=brahma.snapshot.loadHalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
         return group_particles,output_redshift
 
     elif (group_type=='subhalo'):              
@@ -817,14 +981,18 @@ def get_particle_property_within_groups(output_path,particle_property,p_type,des
         else:
             subhalo_group_number,output_redshift=(get_subhalo_property(output_path,'SubhaloGrNr', desired_redshift,list_all=False));
             desired_group_number=subhalo_group_number[subhalo_index]
-            group_particles=il.snapshot.loadHalo(output_path, output_snapshot, desired_group_number, p_type, fields=particle_property)
-            subhalo_particles=il.snapshot.loadSubhalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
+            group_particles=brahma.snapshot.loadHalo(output_path, output_snapshot, desired_group_number, p_type, fields=particle_property)
+            subhalo_particles=brahma.snapshot.loadSubhalo(output_path, output_snapshot, subhalo_index, p_type, fields=particle_property)
         return subhalo_particles,group_particles,output_redshift
     else:
         print("Error:Unidentified group type")
         
         
 def reposition(original_position,scaled_halo_centers,boxsize):
+    """Shift coordinates relative to a box-scaled halo center and wrap once.
+
+    Return an N-by-3 coordinate array in the input length units.
+    """
     x_pos=original_position[:,0]
     y_pos=original_position[:,1]
     z_pos=original_position[:,2]
@@ -843,6 +1011,10 @@ def reposition(original_position,scaled_halo_centers,boxsize):
         
         
 def make_image(Coordinates,Coordinates_for_COM,plane,obj,boxsize,NBINS,scaled_halo_centers=1.,colormap='Blues_r',opacity=1,about_COM=True,REPOSITION=False,show_image=0):
+    """Center or reposition coordinates and optionally draw a projected histogram.
+
+    Return a 3-by-N coordinate array; plane selects xy, yz, or xz when show_image is enabled.
+    """
     x_pos=Coordinates[:,0]
     y_pos=Coordinates[:,1]
     z_pos=Coordinates[:,2]
@@ -857,6 +1029,10 @@ def make_image(Coordinates,Coordinates_for_COM,plane,obj,boxsize,NBINS,scaled_ha
     COM_z=numpy.median(z_pos_COM)
 
     def min_dis(median_position, position,box_size):
+        """Choose the signed displacement with smallest absolute periodic distance.
+
+        Compare the direct displacement with its two neighboring-box images.
+        """
         pos_1=position-median_position
         pos_2=position-median_position+boxsize
         pos_3=position-median_position-boxsize
@@ -903,10 +1079,18 @@ def make_image(Coordinates,Coordinates_for_COM,plane,obj,boxsize,NBINS,scaled_ha
     return numpy.array([x_pos_wrapped,y_pos_wrapped,z_pos_wrapped])
 
 def sort_X_based_on_Y(X,Y):
+    """Sort values in X by the corresponding values in Y.
+
+    Return a NumPy array ordered by ascending Y, with X breaking ties.
+    """
     return numpy.array([x for _,x in sorted(zip(Y,X))])
 
 def get_seedremoved_events(output_path):
 
+    """Combine text logs from blackhole_seedsremoved under output_path.
+
+    Return removal and seeding scale factors, BH IDs, file IDs, and the number of malformed logs.
+    """
     output_file_names=os.listdir(output_path+'blackhole_seedsremoved/')
     snapshot_space=[]
     redshift_space=[]
@@ -951,6 +1135,10 @@ def get_seedremoved_events(output_path):
 
 def get_seeding_events_debug(output_path):
 
+    """Read the debug black-hole seeding log format.
+
+    Return event and host-property arrays, malformed-log count, and gas/BH smoothing lengths.
+    """
     output_file_names=os.listdir(output_path+'blackhole_seeding/')
     snapshot_space=[]
     redshift_space=[]
@@ -1024,6 +1212,10 @@ def get_seeding_events_debug(output_path):
 
 def get_seeding_events(output_path):
 
+    """Read black-hole seeding logs including the drawn seed mass.
+
+    Return event and host-property arrays, file IDs, malformed-log count, and seed masses.
+    """
     output_file_names=os.listdir(output_path+'blackhole_seeding/')
     snapshot_space=[]
     redshift_space=[]
@@ -1097,6 +1289,10 @@ def get_seeding_events(output_path):
 
 def get_seeding_events2(output_path):
 
+    """Read the older extended logs in blackhole_seeding2_backup.
+
+    Return seeding and host-property arrays, including star-forming gas properties and a malformed-log count.
+    """
     output_file_names=os.listdir(output_path+'blackhole_seeding2_backup/')
     snapshot_space=[]
     redshift_space=[]
@@ -1166,6 +1362,10 @@ def get_seeding_events2(output_path):
 
 def get_seeding_events3(output_path,GET_ENVIRONMENT=0):
 
+    """Read extended backup seeding logs with stellar and metal-free gas properties.
+
+    Return event arrays and a malformed-log count; GET_ENVIRONMENT appends major-neighbor counts.
+    """
     output_file_names=os.listdir(output_path+'blackhole_seeding2_backup/')
     snapshot_space=[]
     redshift_space=[]
@@ -1248,6 +1448,10 @@ def get_seeding_events3(output_path,GET_ENVIRONMENT=0):
 
 def get_seeding_events4(output_path,GET_ENVIRONMENT=0):
 
+    """Read extended logs in blackhole_seeding2 including drawn seed masses.
+
+    Return event and host-property arrays with neighbor counts and drawn seed masses.
+    """
     output_file_names=os.listdir(output_path+'blackhole_seeding2/')
     snapshot_space=[]
     redshift_space=[]
@@ -1327,6 +1531,10 @@ def get_seeding_events4(output_path,GET_ENVIRONMENT=0):
 
 
 def get_phantommerger_events(output_path,get_primary_secondary_indices=0,HDF5=0,SORT_PRIMARY_SECONDARY=0):
+    """Read phantom-merger events from text logs or HDF5.
+
+    Return merger types, times, component masses/IDs, file IDs, and malformed-log count; sorting is optional.
+    """
     N_empty=0
     if(HDF5):
         print("Note: reading merger events from the post processed hdf5 files")
@@ -1418,6 +1626,10 @@ def get_phantommerger_events(output_path,get_primary_secondary_indices=0,HDF5=0,
         return merger_type_complete,scale_fac_complete_sorted,BH_mass1_complete,BH_mass2_complete,BH_id1_complete,BH_id2_complete,file_id_complete_sorted,N_empty   
 
 def get_merger_events_kin(output_path,get_primary_secondary_indices=0,HDF5=0,SORT_PRIMARY_SECONDARY=0):
+    """Read merger events with smoothing lengths and kinetic/potential energies.
+
+    Return event arrays; sorting primary/secondary components returns only the core merger fields.
+    """
     N_empty=0
     if(HDF5):
         print("Note: reading merger events from the post processed hdf5 files")
@@ -1510,6 +1722,10 @@ def get_merger_events_kin(output_path,get_primary_secondary_indices=0,HDF5=0,SOR
         return scale_fac_complete,BH_mass1_complete,BH_mass2_complete,BH_id1_complete,BH_id2_complete,file_id_complete,N_empty,BH_Hsml1_complete,BH_Hsml2_complete,K_Energy_complete,P_Energy_complete
 
 def get_merger_events_debug(output_path,get_primary_secondary_indices=0,HDF5=0,SORT_PRIMARY_SECONDARY=0):
+    """Read merger logs with component smoothing lengths.
+
+    Return event arrays and malformed-log count; mass-sorted output omits smoothing lengths.
+    """
     N_empty=0
     if(HDF5):
         print("Note: reading merger events from the post processed hdf5 files")
@@ -1595,6 +1811,10 @@ def get_merger_events_debug(output_path,get_primary_secondary_indices=0,HDF5=0,S
 
 
 def get_merger_events(output_path,get_primary_secondary_indices=0,HDF5=0,SORT_PRIMARY_SECONDARY=0):
+    """Combine black-hole merger records from text logs or HDF5.
+
+    Return scale factors, component masses/IDs, file IDs, and malformed-log count; optionally sort by mass.
+    """
     N_empty=0
     if(HDF5):
         print("Note: reading merger events from the post processed hdf5 files")
@@ -1671,6 +1891,10 @@ def get_merger_events(output_path,get_primary_secondary_indices=0,HDF5=0,SORT_PR
 
 
 def get_merger_events_hosts(output_path,HDF5=0,SORT_PRIMARY_SECONDARY=0):
+    """Read merger records with the host halo mass components.
+
+    Return event, BH, and host-property arrays; optionally order both components by BH mass.
+    """
     if (HDF5):
         hf = h5py.File(output_path+'blackhole_mergerhosts.hdf5')
         file_id_complete=hf.get('FileID')[:]
@@ -1771,6 +1995,10 @@ def get_merger_events_hosts(output_path,HDF5=0,SORT_PRIMARY_SECONDARY=0):
                 aaa=1
 
     def fetch_primary_secondary(prop1,prop2,primary_index,secondary_index):
+        """Reorder paired properties using the primary and secondary component indices.
+
+        Return two arrays that keep host properties aligned with the selected BH ordering.
+        """
         prop_tuple=list(zip(prop1,prop2))
         primary_prop=numpy.array([prop_t[index] for (prop_t,index) in list(zip(prop_tuple,primary_index))])
         secondary_prop=numpy.array([prop_t[index] for (prop_t,index) in list(zip(prop_tuple,secondary_index))])
@@ -1794,6 +2022,10 @@ def get_merger_events_hosts(output_path,HDF5=0,SORT_PRIMARY_SECONDARY=0):
 
                             
 def get_merger_events_from_snapshot(output_path,desired_redshift,SORT_PRIMARY_SECONDARY=0,HOSTS=0):
+    """Read merger catalog chunks at the snapshot nearest desired_redshift.
+
+    Return merger arrays; HOSTS includes accretion and host fields unless mass-sorted output is requested.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False)
     print(output_snapshot,output_redshift)
     tot_mergers=0
@@ -1891,7 +2123,15 @@ def get_merger_events_from_snapshot(output_path,desired_redshift,SORT_PRIMARY_SE
         
         
 def get_blackhole_history_high_res_all_progenitors(output_path,desired_id,mergers_from_snapshot=0,use_cleaned=0,get_all_blackhole_history=0,HDF5=0,ONLY_PROGENITORS=0,desired_id_redshift=0):
+    """Collect detailed histories for a BH and its merger-connected IDs.
+
+    Return IDs, scale factors, masses, accretion rates, densities, sound speeds, and merger times.
+    """
     def parse_id_col(BH_ids_as_string):
+        """Convert a prefixed BH identifier from a detail log to an integer.
+
+        Strip the first three characters before conversion.
+        """
         return numpy.int(BH_ids_as_string[3:])
     vec_parse_id_col=numpy.vectorize(parse_id_col)
     
@@ -1990,7 +2230,15 @@ def get_blackhole_history_high_res_all_progenitors(output_path,desired_id,merger
 
 
 def get_blackhole_history_high_res_all_progenitors_v2(output_path,desired_id):
+    """Collect merger-connected BH histories from the legacy text detail logs.
+
+    Return IDs, scale factors, masses, accretion rates, densities, sound speeds, and merger times.
+    """
     def parse_id_col(BH_ids_as_string):
+        """Convert a prefixed BH identifier from a detail log to an integer.
+
+        Strip the first three characters before conversion.
+        """
         return numpy.int(BH_ids_as_string[3:])
     vec_parse_id_col=numpy.vectorize(parse_id_col)
     
@@ -2049,6 +2297,10 @@ def get_blackhole_history_high_res_all_progenitors_v2(output_path,desired_id):
         
 def get_progenitors_and_descendants(output_path,desired_id,MAX_ITERATION=100,mergers_from_snapshot=0,HDF5=0,ONLY_PROGENITORS=0,desired_id_redshift=0):
 
+    """Expand the set of BH IDs connected through merger events.
+
+    Return connected IDs and event scale factors; ONLY_PROGENITORS applies the redshift restriction.
+    """
     BH_ids_for_id=numpy.array([],dtype=int)
     scale_factors_for_id=numpy.array([])
     BH_masses_for_id=numpy.array([])
@@ -2101,6 +2353,10 @@ def get_progenitors_and_descendants(output_path,desired_id,MAX_ITERATION=100,mer
 
 
 def get_merging_event_indices(basePath,desired_id):
+    """Find all HDF5 merger events connected to a chosen BH ID.
+
+    Return unique event indices, unique merger scale factors, and connected BH IDs.
+    """
     merging_time,primary_mass,secondary_mass,primary_id,secondary_id,file_id_complete,N_empty=get_merger_events(basePath,HDF5=1)
     event_indices=numpy.arange(0,len(merging_time))
     
@@ -2136,6 +2392,10 @@ def get_merging_event_indices(basePath,desired_id):
 
 
 def generate_group_ids(output_path,desired_redshift,p_type,save_output_path='./',group_type='groups',create=False):    
+    """Assign particles to groups or load a cached assignment.
+
+    Return group IDs and write a snapshot-specific NumPy cache when creating assignments.
+    """
     global complete_particle_ids
     particle_property='ParticleIDs'
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift)
@@ -2160,11 +2420,15 @@ def generate_group_ids(output_path,desired_redshift,p_type,save_output_path='./'
     def find_index(id_to_be_searched):
         #print(numpy.where(complete_particle_ids==id_to_be_searched))
         
+        """Find positions of a particle ID in the complete snapshot ID array.
+
+        Return all matching indices for the enclosing group-assignment routine.
+        """
         return (numpy.where(complete_particle_ids==id_to_be_searched))[0]
     vec_find_index=numpy.vectorize(find_index)
     
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift,list_all=False)
-    requested_property=il.snapshot.loadSubset(output_path,output_snapshot,p_type)[particle_property]
+    requested_property=brahma.snapshot.loadSubset(output_path,output_snapshot,p_type)[particle_property]
 
     print('Reading group lengths')
     if (group_type=='groups'):              
@@ -2242,6 +2506,10 @@ def generate_group_ids(output_path,desired_redshift,p_type,save_output_path='./'
 
 
 def generate_subhalo_ids(output_path,desired_redshift,p_type,save_output_path='./',create=False):
+    """Assign particles to the nearest subhalo within their parent FoF group.
+
+    Return IDs and squared periodic distances; load or write snapshot-specific NumPy caches.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift)   
     if ((os.path.exists(save_output_path+'subhalo_ids_%d.npy'%output_snapshot))&(create==False)):
         print("File exists!! subhalo ids exist already")
@@ -2267,6 +2535,10 @@ def generate_subhalo_ids(output_path,desired_redshift,p_type,save_output_path='.
     SubhaloGrNr_cut=SubhaloGrNr[mask]
 
     def min_dis(median_position, position,box_size):
+            """Choose the signed displacement with smallest absolute periodic distance.
+
+            Compare the direct displacement with its two neighboring-box images.
+            """
             pos_1=position-median_position
             pos_2=position-median_position+boxsize
             pos_3=position-median_position-boxsize
@@ -2281,6 +2553,10 @@ def generate_subhalo_ids(output_path,desired_redshift,p_type,save_output_path='.
 
     def get_subhalo_id(blackhole_info):
         #print(blackhole_info)
+        """Find the nearest eligible subhalo in the particle's parent FoF group.
+
+        Return its index and squared periodic distance, or (-1, -1) for no candidates.
+        """
         blackhole_group_id=blackhole_info[0]
         blackhole_position=blackhole_info[1]
         extract_ids_within_the_parent_FOF=blackhole_group_id==SubhaloGrNr_cut
@@ -2314,6 +2590,10 @@ def generate_subhalo_ids(output_path,desired_redshift,p_type,save_output_path='.
     return subhalo_ids,distance_from_subhalo_center
 
 def generate_subhalo_ids_beta(output_path,desired_redshift,p_type,save_output_path='./',create=False):
+    """Assign particles to nearby subhalos with nonzero mass in the requested type.
+
+    Return IDs and squared periodic distances within each parent FoF group, using NumPy caches.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(output_path,desired_redshift)   
     if ((os.path.exists(save_output_path+'group_ids_%d.npy'%output_snapshot))&(create==False)):
         print("File exists!! subhalo ids exist already")
@@ -2342,6 +2622,10 @@ def generate_subhalo_ids_beta(output_path,desired_redshift,p_type,save_output_pa
     SubhaloGrNr_cut=SubhaloGrNr[mask]
 
     def min_dis(median_position, position,box_size):
+            """Choose the signed displacement with smallest absolute periodic distance.
+
+            Compare the direct displacement with its two neighboring-box images.
+            """
             pos_1=position-median_position
             pos_2=position-median_position+boxsize
             pos_3=position-median_position-boxsize
@@ -2356,6 +2640,10 @@ def generate_subhalo_ids_beta(output_path,desired_redshift,p_type,save_output_pa
 
     def get_subhalo_id(blackhole_info):
         #print(blackhole_info)
+        """Find the nearest eligible subhalo in the particle's parent FoF group.
+
+        Return its index and squared periodic distance, or (-1, -1) for no candidates.
+        """
         blackhole_group_id=blackhole_info[0]
         blackhole_position=blackhole_info[1]
         extract_ids_within_the_parent_FOF=blackhole_group_id==SubhaloGrNr_cut
@@ -2392,10 +2680,14 @@ def generate_subhalo_ids_beta(output_path,desired_redshift,p_type,save_output_pa
         
 def mean_plot(x,y,xscl,yscl,nbins,manual_bins=False,M_BINS=numpy.arange(0,200)):
     #nbins = 5
+    """Bin x and calculate the mean and standard deviation of y.
+
+    Optionally log-transform each input; return centers, means, upper bounds, and lower bounds after filtering.
+    """
     if(yscl==True):
-        y=log10(y)
+        y=numpy.log10(y)
     if(xscl==True):
-        x=log10(x)
+        x=numpy.log10(x)
     if (manual_bins==False):
         n, _ = numpy.histogram(x, bins=nbins)
         sy, _ = numpy.histogram(x, bins=nbins, weights=y)
@@ -2425,10 +2717,14 @@ def mean_plot(x,y,xscl,yscl,nbins,manual_bins=False,M_BINS=numpy.arange(0,200)):
 
 def median_plot(x,y,xscl,yscl,nbins):
     #nbins = 5
+    """Calculate median y values in evenly spaced x bins.
+
+    Optionally log-transform each input and return bin centers and medians in those units.
+    """
     if(yscl==True):
-        y=log10(y)
+        y=numpy.log10(y)
     if(xscl==True):
-        x=log10(x)
+        x=numpy.log10(x)
     x_space=numpy.linspace(numpy.amin(x),numpy.amax(x),nbins)
     y_space_med=[numpy.median(y[(x>x_space[i])&(x<x_space[i+1])]) for i in range(0,len(x_space)-1)]
     x_space_med=[(x_space[i]+x_space[i+1])/2 for i in range(0,len(x_space)-1)]
@@ -2437,10 +2733,14 @@ def median_plot(x,y,xscl,yscl,nbins):
 
 def mean_plot2(x,y,xscl,yscl,min_x, max_x,nbins):
     #nbins = 5
+    """Calculate means and standard deviations within explicit x limits.
+
+    Optionally log-transform each input; return bin centers, means, and standard deviations.
+    """
     if(yscl==True):
-        y=log10(y)
+        y=numpy.log10(y)
     if(xscl==True):
-        x=log10(x)
+        x=numpy.log10(x)
     x_space=numpy.linspace(min_x,max_x,nbins)
     y_space_med=numpy.array([numpy.mean(y[(x>x_space[i])&(x<x_space[i+1])]) for i in range(0,len(x_space)-1)])
     y_space_std=numpy.array([numpy.std(y[(x>x_space[i])&(x<x_space[i+1])]) for i in range(0,len(x_space)-1)])
@@ -2448,10 +2748,14 @@ def mean_plot2(x,y,xscl,yscl,min_x, max_x,nbins):
     return x_space_med,y_space_med,y_space_std
 
 def get_median_with_IQR(x,y,xscl,yscl,minx,maxx,nbins,percentile):
+    """Calculate binned medians and symmetric percentile widths.
+
+    Optionally log-transform each input; return centers, medians, and percentile-width arrays.
+    """
     if(yscl==True):
-        y=log10(y)
+        y=numpy.log10(y)
     if(xscl==True):
-        x=log10(x)
+        x=numpy.log10(x)
     x_space=numpy.linspace(minx,maxx,nbins)
     y_space_med=[numpy.median(y[(x>x_space[i])&(x<x_space[i+1])]) for i in range(0,len(x_space)-1)]
     y_space_IQR=[get_IQR(y[(x>x_space[i])&(x<x_space[i+1])],percentile) for i in range(0,len(x_space)-1)]
@@ -2459,6 +2763,10 @@ def get_median_with_IQR(x,y,xscl,yscl,minx,maxx,nbins,percentile):
     return numpy.array(x_space_med),numpy.array(y_space_med),numpy.array(y_space_IQR)
 
 def get_IQR(dist,percentile):
+    """Measure the difference between percentile and its complementary percentile.
+
+    Use percentile=75 for the interquartile range; return zero for an empty distribution.
+    """
     if (len(dist)>0):
         return numpy.percentile(dist, percentile) - numpy.percentile(dist, 100.-percentile)
     else:
@@ -2467,7 +2775,15 @@ def get_IQR(dist,percentile):
     
     
 def luminosity_function(HM,box_size,log_HM_min,log_HM_max,Nbins):
+        """Estimate a luminosity function per dex and per box volume.
+
+        Return bin centers, number densities, and Poisson errors using box_size cubed as the volume.
+        """
         def extract(HM_min,HM_max):
+            """Summarize values strictly inside the supplied bin edges.
+
+            Return the bin center and the count, weight, or fraction used by the enclosing estimator.
+            """
             mask=(HM>HM_min)&(HM<HM_max)
             #print len(HM[mask])
             return (HM_min+HM_max)/2,len(HM[mask])
@@ -2483,8 +2799,16 @@ def luminosity_function(HM,box_size,log_HM_min,log_HM_max,Nbins):
         return centers,HMF,dHMF        
     
 def get_halo_density_profile(output_path,p_type,desired_redshift_of_selected_halo,index_of_selected_halo,min_edge,max_edge,Nbins,CENTER_AROUND='POTENTIAL_MINIMUM',p_id=0):
+    """Bin halo particle masses in logarithmic radial shells with periodic distances.
+
+    Return log-radius centers, shell masses, and densities about the selected potential or BH center.
+    """
     from kdcount import correlate
     def min_dis(median_position, position,box_size):
+        """Choose the signed displacement with smallest absolute periodic distance.
+
+        Compare the direct displacement with its two neighboring-box images.
+        """
         pos_1=position-median_position
         pos_2=position-median_position+boxsize
         pos_3=position-median_position-boxsize
@@ -2553,8 +2877,16 @@ def get_halo_density_profile(output_path,p_type,desired_redshift_of_selected_hal
 
 
 def get_general_profile(output_path,desired_property,p_type,desired_redshift_of_selected_halo,index_of_selected_halo,min_edge,max_edge,Nbins,CENTER_AROUND='POTENTIAL_MINIMUM',p_id=0,OPERATION='AVERAGE'):
+    """Aggregate a halo particle property in logarithmic radial shells.
+
+    Return log-radius centers, edges, and mass-weighted averages or sums selected by OPERATION.
+    """
     from kdcount import correlate
     def min_dis(median_position, position,box_size):
+        """Choose the signed displacement with smallest absolute periodic distance.
+
+        Compare the direct displacement with its two neighboring-box images.
+        """
         pos_1=position-median_position
         pos_2=position-median_position+boxsize
         pos_3=position-median_position-boxsize
@@ -2628,6 +2960,10 @@ def get_general_profile(output_path,desired_property,p_type,desired_redshift_of_
                 
         
 def find_closest_BH(position,All_Coordinates,All_IDs,matching_range):
+    """Expand a cube until it contains exactly one candidate BH.
+
+    Return the cube side length and BH ID, or (-1, -1) when no unique match is found.
+    """
     length_space=numpy.linspace(0,matching_range,matching_range)
     xpos,ypos,zpos=position
     found=0
@@ -2650,11 +2986,19 @@ def find_closest_BH(position,All_Coordinates,All_IDs,matching_range):
         return -1,-1
     
 def intersectnd(A,B):
+    """Find common pairs of integer values in two arrays.
+
+    Return unique shared pairs using string representations for the intersection.
+    """
     A_string=[(str(a[0])+'_'+str(a[1]))for a in A]
     B_string =[(str(b[0])+'_'+str(b[1]))for b in B]
     return (numpy.array([AB.split('_') for AB in numpy.intersect1d(A_string,B_string)])).astype(int)
 
 def match_the_blackholes(basePath1,basePath2, desired_redshift,matching_range):
+    """Match BHs between simulations using mutually consistent spatial searches.
+
+    Return mutual ID pairs, directional matches, and both original ID arrays.
+    """
     p_type=5
     Coordinates1,output_redshift=get_particle_property(basePath1,'Coordinates',p_type,desired_redshift,list_all=False)
     ID1,output_redshift=get_particle_property(basePath1,'ParticleIDs',p_type,desired_redshift,list_all=False)    
@@ -2683,8 +3027,16 @@ def match_the_blackholes(basePath1,basePath2, desired_redshift,matching_range):
         
     
 def get_sublink_progenitors(basePath,subhalo_index,desired_redshift):    
+    """Build a recursive subhalo progenitor tree from tree_extended.hdf5.
+
+    Return a root node containing subhalo indices, snapshots, and two progenitor links.
+    """
     class Subhalo:
         def __init__(self):
+            """Initialize an empty tree node with sentinel values.
+
+            Traversal fills in the object identity and progenitor links.
+            """
             self.Index=-1
             self.MostMassiveProgenitor = -1
             self.NextMostMassiveProgenitor = -1
@@ -2693,6 +3045,10 @@ def get_sublink_progenitors(basePath,subhalo_index,desired_redshift):
     #----------------------------------This function fills up the progenitor tree------------------------------------------               
     def function_fill_progenitor_tree(subhalo_index,currentsubhalo,current_subhalo_ID):
         #print(current_subhalo_ID)
+        """Populate the current node and recursively attach its progenitors.
+
+        Update the tree in place using the event or tree arrays from the enclosing scope.
+        """
         fetch_subhalo=current_subhalo_ID==SubhaloID_Tree
         currentsubhalo.Index=SubfindID_Tree[fetch_subhalo][0]
         currentsubhalo.Snap=SnapNum_Tree[fetch_subhalo][0]
@@ -2747,6 +3103,10 @@ def get_sublink_progenitors(basePath,subhalo_index,desired_redshift):
     return rootsubhalo
 
 def get_sublink_descendants(basePath,subhalo_index,desired_redshift,TNG=0,path_to_TNG_trees='.'):  
+    """Follow a subhalo descendant chain through an extended tree file.
+
+    Return subhalo indices and snapshots; TNG selects the supplied external tree directory.
+    """
     output_redshift,output_snapshot=desired_redshift_to_output_redshift(basePath,desired_redshift)
 #	    save_output_path='/home/aklantbhowmick/Aklant/arepo_code_development/descendant_outputs/'
     if (TNG==0):
@@ -2791,6 +3151,10 @@ def get_sublink_descendants(basePath,subhalo_index,desired_redshift,TNG=0,path_t
     return SubfindID_descendants,SnapNum_descendants
 
 def get_sublink_progenitors_most_massive_branch(basePath,root_subhalo_index,root_redshift):
+    """Follow the first-progenitor links from a selected subhalo.
+
+    Return subhalo-index and snapshot arrays for up to 100 nodes, including the root.
+    """
     rootsubhalo=get_sublink_progenitors(basePath,root_subhalo_index,root_redshift)
     currentsubhalo=rootsubhalo
     Progenitor_SubhaloIndices=[]
@@ -2812,6 +3176,10 @@ def get_sublink_progenitors_most_massive_branch(basePath,root_subhalo_index,root
 
 
 def trace_a_halo(basePath,halo_index_to_be_traced,initial_redshift,final_redshift):
+    """Trace a halo through its first catalog subhalo to another redshift.
+
+    Use descendants or the most-massive progenitor branch and return the destination FoF index.
+    """
     SubhaloGrNr,o=get_subhalo_property(basePath,'SubhaloGrNr',initial_redshift)
     SubhaloMass,o=get_subhalo_property(basePath,'SubhaloMass',initial_redshift)
     SubhaloIndex=numpy.arange(0,len(SubhaloMass))
@@ -2835,6 +3203,10 @@ def trace_a_halo(basePath,halo_index_to_be_traced,initial_redshift,final_redshif
 
 
 def convert_merger_events_to_hdf5(basePath, dont_save_in_basePath=0, save_output_path='.'):
+    """Combine text merger logs into blackhole_mergers.hdf5.
+
+    Write component IDs, masses, smoothing lengths, and event metadata, replacing the destination file.
+    """
     output_file_names = os.listdir(basePath + 'blackhole_mergers/')
     snapshot_space = []
     redshift_space = []
@@ -2899,6 +3271,10 @@ def convert_merger_events_to_hdf5(basePath, dont_save_in_basePath=0, save_output
     
     
 def convert_merger_hosts_to_hdf5(basePath):
+    """Combine merger-host text logs into blackhole_mergerhosts.hdf5.
+
+    Write component BH and host masses with event metadata, replacing the destination file.
+    """
     output_file_names=os.listdir(basePath+'/blackhole_mergerhosts/')
     snapshot_space=[]
     redshift_space=[]
@@ -3002,7 +3378,15 @@ def convert_merger_hosts_to_hdf5(basePath):
     
     
 def convert_details_to_hdf5(basePath,DFD=0,KIN=0):
+    """Combine BH detail logs into blackhole_details.hdf5.
+
+    DFD and KIN select extended log layouts; write history and phase-space fields, replacing the file.
+    """
     def parse_id_col(BH_ids_as_string):
+        """Convert a prefixed BH identifier from a detail log to an integer.
+
+        Strip the first three characters before conversion.
+        """
         return numpy.int(BH_ids_as_string[3:])
     vec_parse_id_col=numpy.vectorize(parse_id_col)
     output_file_names=os.listdir(basePath+'blackhole_details/')
@@ -3110,7 +3494,15 @@ def convert_details_to_hdf5(basePath,DFD=0,KIN=0):
     
     
 def convert_details_to_hdf5_previous(basePath,DFD=0,KIN=0):
+    """Convert the earlier BH detail log layout to HDF5.
+
+    Write history and phase-space arrays to blackhole_details.hdf5, replacing the destination file.
+    """
     def parse_id_col(BH_ids_as_string):
+        """Convert a prefixed BH identifier from a detail log to an integer.
+
+        Strip the first three characters before conversion.
+        """
         return numpy.int(BH_ids_as_string[3:])
     vec_parse_id_col=numpy.vectorize(parse_id_col)
     output_file_names=os.listdir(basePath+'blackhole_details/')
@@ -3188,12 +3580,20 @@ def convert_details_to_hdf5_previous(basePath,DFD=0,KIN=0):
     hf.close()
 
 def get_blackhole_progenitors(basePath,blackhole_index,desired_redshift,redshift_step): 
+    """Build a recursive BH progenitor tree from snapshot merger records.
+
+    Return the root node, merger count, and included event indices; update global traversal state.
+    """
     global N_mergers
     global indices_of_included_events
     N_mergers=0
     indices_of_included_events=[-1]
     class Blackhole:
         def __init__(self):
+            """Initialize an empty tree node with sentinel values.
+
+            Traversal fills in the object identity and progenitor links.
+            """
             self.BHID=-1
             self.BHMassAtLastMerger=-1.
             self.PrimaryProgenitor = -1
@@ -3202,6 +3602,10 @@ def get_blackhole_progenitors(basePath,blackhole_index,desired_redshift,redshift
     #-----------------------------------------------------------------------------------------------------------------------
     #----------------------------------This function fills up the progenitor tree------------------------------------------               
     def function_fill_progenitor_tree(blackhole_ID,currentblackhole,minimum_redshift,redshift_step):
+        """Populate the current node and recursively attach its progenitors.
+
+        Update the tree in place using the event or tree arrays from the enclosing scope.
+        """
         global N_mergers
         
         currentblackhole.BHID=blackhole_ID
